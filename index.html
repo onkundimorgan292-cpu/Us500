@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>US500 1H Sniper Bot (7083.06)</title>
+  <title>US500 1H Sniper Bot · Persistent Lock</title>
   <style>
     :root {
       --bg: #080a0d;
@@ -175,6 +175,11 @@
       font-size: 0.92rem;
     }
 
+    input:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
     .btn-row {
       display: flex;
       flex-wrap: wrap;
@@ -219,8 +224,8 @@
   <div class="container">
     <header>
       <div class="brand">
-        <h1>US500 · H1 SNIPER SCANNER & LOCK BOT</h1>
-        <p>E-mini SP 500 (2 Decimals · 0.01 pt) · Scan Once → Signal & Lock Until TP/SL</p>
+        <h1>US500 · H1 SNIPER SCANNER & PERSISTENT LOCK BOT</h1>
+        <p>Survives Page Refresh · Deterministic Non-Shifting Entry · 2,000-Pt TP Lock</p>
       </div>
       <div id="lockBadge" class="status-pill">
         <span class="dot"></span>
@@ -231,7 +236,7 @@
     <div class="grid">
       <div class="card">
         <div class="card-title">MT5 H1 Candle Countdown</div>
-        <div id="countdown" class="big-num">00:10:50</div>
+        <div id="countdown" class="big-num">00:00:00</div>
         <div id="clockInfo" class="subtext">US500 H1 · 2-Digit Broker Quote (0.01)</div>
         <div class="quote-bar">
           <span>SELL: <strong id="bidDisplay" class="red">7083.06</strong></span>
@@ -240,7 +245,7 @@
       </div>
 
       <div class="card">
-        <div class="card-title">Active 1H Sniper Signal (Locked)</div>
+        <div class="card-title">Locked 1H Sniper Signal (Refresh-Safe)</div>
         <div class="row">
           <span>Lock Status</span>
           <span id="lockStateLabel" class="gold">UNLOCKED</span>
@@ -250,7 +255,7 @@
           <span id="sigDir" class="gold">WAITING FOR SCAN</span>
         </div>
         <div class="row">
-          <span>Sniper Entry</span>
+          <span>Fixed Sniper Entry</span>
           <span id="sigEntry">—</span>
         </div>
         <div class="row">
@@ -265,23 +270,27 @@
     </div>
 
     <div class="card" style="margin-bottom: 18px;">
-      <div class="card-title">US500 Digits & Controls (1 pt = 0.01 | 2,000 pts = 20.00)</div>
+      <div class="card-title">US500 Parameters (1 pt = 0.01 | 2,000 pts = 20.00)</div>
       <div class="controls">
         <div>
-          <label for="bidInput">US500 Bid Price (2 Digits)</label>
-          <input id="bidInput" type="number" step="0.01" value="7083.06" oninput="syncQuoteInputs()" />
+          <label for="bidInput">US500 Current Bid (2 Digits)</label>
+          <input id="bidInput" type="number" step="0.01" value="7083.06" oninput="onParamChange()" />
+        </div>
+        <div>
+          <label for="h1OpenInput">Current H1 Candle Open</label>
+          <input id="h1OpenInput" type="number" step="0.01" value="7095.40" oninput="onParamChange()" />
         </div>
         <div>
           <label for="spreadPts">Spread (Points)</label>
-          <input id="spreadPts" type="number" step="1" value="55" oninput="syncQuoteInputs()" />
+          <input id="spreadPts" type="number" step="1" value="55" oninput="onParamChange()" />
         </div>
         <div>
           <label for="slPts">Sniper SL (Points)</label>
-          <input id="slPts" type="number" step="10" value="850" />
+          <input id="slPts" type="number" step="10" value="850" oninput="onParamChange()" />
         </div>
         <div>
           <label for="tpPts">Target TP (Points)</label>
-          <input id="tpPts" type="number" step="10" value="2000" />
+          <input id="tpPts" type="number" step="10" value="2000" oninput="onParamChange()" />
         </div>
       </div>
 
@@ -294,118 +303,207 @@
     </div>
 
     <div class="card">
-      <div class="card-title">Robot Execution Log</div>
+      <div class="card-title">Persistent Execution Log</div>
       <div id="logBox" class="log-box"></div>
     </div>
   </div>
 
   <script>
-    const POINT = 0.01; // Matched to US500 2-decimal MT5 quote (e.g., 7083.06)
+    const STORAGE_KEY = 'US500_H1_SNIPER_BOT_STATE_V1';
+    const POINT = 0.01;
     const DIGITS = 2;
 
-    let isLocked = false;
-    let activeTrade = null;
-    let bidPrice = 7083.06;
-    let askPrice = 7083.61;
+    let state = {
+      isLocked: false,
+      activeTrade: null,
+      bidPrice: 7083.06,
+      h1Open: 7095.40,
+      spreadPts: 55,
+      slPts: 850,
+      tpPts: 2000,
+      logs: []
+    };
+
     let tickInterval = null;
 
-    function log(msg) {
-      const box = document.getElementById('logBox');
-      const now = new Date().toTimeString().slice(0, 8);
-      box.innerHTML = `[${now}] ${msg}<br>` + box.innerHTML;
-    }
-
-    function syncQuoteInputs() {
-      const b = parseFloat(document.getElementById('bidInput').value);
-      const sp = parseFloat(document.getElementById('spreadPts').value) || 55;
-      if (!isNaN(b)) {
-        bidPrice = b;
-        askPrice = +(bidPrice + sp * POINT).toFixed(DIGITS);
-        document.getElementById('bidDisplay').textContent = bidPrice.toFixed(DIGITS);
-        document.getElementById('askDisplay').textContent = askPrice.toFixed(DIGITS);
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) {
+        console.error('Storage save failed:', e);
       }
     }
 
-    // Scans once, displays signal + Entry/SL/TP, and immediately locks until TP or SL hits
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          state = { ...state, ...parsed };
+        }
+      } catch (e) {
+        console.error('Storage load failed:', e);
+      }
+    }
+
+    function addLog(msg) {
+      const now = new Date().toTimeString().slice(0, 8);
+      state.logs.unshift(`[${now}] ${msg}`);
+      if (state.logs.length > 40) state.logs.length = 40;
+      saveState();
+      renderLogs();
+    }
+
+    function renderLogs() {
+      document.getElementById('logBox').innerHTML = state.logs.join('<br>');
+    }
+
+    function getAskPrice() {
+      return +(state.bidPrice + state.spreadPts * POINT).toFixed(DIGITS);
+    }
+
+    // Deterministic, non-shifting 1H sniper rule based on H1 Open vs Current Bid + round institutional quarter-levels
+    function computeDeterministicSetup() {
+      const bid = state.bidPrice;
+      const ask = getAskPrice();
+      const h1Open = state.h1Open;
+
+      // Bearish 1H structure if Bid is below H1 Open; Bullish 1H structure if Bid is above/equal to H1 Open
+      const isBullish = bid >= h1Open;
+      const side = isBullish ? 'BUY' : 'SELL';
+
+      // Snap sniper entry cleanly to exact 0.25 index quarter-level (no random shifting)
+      const rawEntry = side === 'BUY' ? ask : bid;
+      const snappedEntry = +(Math.round(rawEntry * 4) / 4).toFixed(DIGITS);
+
+      const sl = side === 'BUY'
+        ? +(snappedEntry - state.slPts * POINT).toFixed(DIGITS)
+        : +(snappedEntry + state.slPts * POINT).toFixed(DIGITS);
+
+      const tp = side === 'BUY'
+        ? +(snappedEntry + state.tpPts * POINT).toFixed(DIGITS)
+        : +(snappedEntry - state.tpPts * POINT).toFixed(DIGITS);
+
+      return {
+        side,
+        entry: snappedEntry,
+        sl,
+        tp,
+        slPts: state.slPts,
+        tpPts: state.tpPts,
+        h1Open
+      };
+    }
+
+    function renderAll() {
+      const ask = getAskPrice();
+
+      document.getElementById('bidInput').value = state.bidPrice.toFixed(DIGITS);
+      document.getElementById('h1OpenInput').value = state.h1Open.toFixed(DIGITS);
+      document.getElementById('spreadPts').value = state.spreadPts;
+      document.getElementById('slPts').value = state.slPts;
+      document.getElementById('tpPts').value = state.tpPts;
+
+      document.getElementById('bidDisplay').textContent = state.bidPrice.toFixed(DIGITS);
+      document.getElementById('askDisplay').textContent = ask.toFixed(DIGITS);
+
+      const badge = document.getElementById('lockBadge');
+      const lockText = document.getElementById('lockText');
+
+      // Lock input fields while a trade is active so levels cannot shift mid-trade
+      document.getElementById('h1OpenInput').disabled = state.isLocked;
+      document.getElementById('spreadPts').disabled = state.isLocked;
+      document.getElementById('slPts').disabled = state.isLocked;
+      document.getElementById('tpPts').disabled = state.isLocked;
+
+      if (state.isLocked && state.activeTrade) {
+        const t = state.activeTrade;
+        badge.classList.add('locked');
+        lockText.textContent = 'LOCKED · SAVED ACROSS REFRESH';
+
+        document.getElementById('lockStateLabel').textContent = 'LOCKED (UNTIL TP / SL)';
+        document.getElementById('lockStateLabel').className = 'red';
+
+        document.getElementById('sigDir').textContent = `SNIPER ${t.side}`;
+        document.getElementById('sigDir').className = t.side === 'BUY' ? 'green' : 'red';
+        document.getElementById('sigEntry').textContent = t.entry.toFixed(DIGITS);
+        document.getElementById('sigSL').textContent = `${t.sl.toFixed(DIGITS)} (-${t.slPts} pts)`;
+        document.getElementById('sigTP').textContent = `${t.tp.toFixed(DIGITS)} (+${t.tpPts} pts)`;
+
+        document.getElementById('scanOnceBtn').disabled = true;
+        document.getElementById('tpBtn').disabled = false;
+        document.getElementById('slBtn').disabled = false;
+      } else {
+        badge.classList.remove('locked');
+        lockText.textContent = 'UNLOCKED · READY TO SCAN';
+
+        document.getElementById('lockStateLabel').textContent = 'UNLOCKED';
+        document.getElementById('lockStateLabel').className = 'green';
+        document.getElementById('sigDir').textContent = 'WAITING FOR SCAN';
+        document.getElementById('sigDir').className = 'gold';
+        document.getElementById('sigEntry').textContent = '—';
+        document.getElementById('sigSL').textContent = '—';
+        document.getElementById('sigTP').textContent = '—';
+
+        document.getElementById('scanOnceBtn').disabled = false;
+        document.getElementById('tpBtn').disabled = true;
+        document.getElementById('slBtn').disabled = true;
+      }
+
+      renderLogs();
+    }
+
+    function onParamChange() {
+      if (state.isLocked) return;
+
+      const b = parseFloat(document.getElementById('bidInput').value);
+      const o = parseFloat(document.getElementById('h1OpenInput').value);
+      const sp = parseFloat(document.getElementById('spreadPts').value);
+      const sl = parseFloat(document.getElementById('slPts').value);
+      const tp = parseFloat(document.getElementById('tpPts').value);
+
+      if (!isNaN(b)) state.bidPrice = +b.toFixed(DIGITS);
+      if (!isNaN(o)) state.h1Open = +o.toFixed(DIGITS);
+      if (!isNaN(sp)) state.spreadPts = Math.max(0, Math.round(sp));
+      if (!isNaN(sl)) state.slPts = Math.max(50, Math.round(sl));
+      if (!isNaN(tp)) state.tpPts = Math.max(100, Math.round(tp));
+
+      saveState();
+      document.getElementById('bidDisplay').textContent = state.bidPrice.toFixed(DIGITS);
+      document.getElementById('askDisplay').textContent = getAskPrice().toFixed(DIGITS);
+    }
+
     function scanOnceAndLock() {
-      if (isLocked) {
-        log('LOCKED: Robot cannot scan again until current TP or SL is hit.');
+      if (state.isLocked) {
+        addLog('BLOCKED: Already locked on active signal until TP or SL hits.');
         return;
       }
 
-      syncQuoteInputs();
+      onParamChange();
+      const setup = computeDeterministicSetup();
 
-      const slPts = parseFloat(document.getElementById('slPts').value) || 850;
-      const tpPts = parseFloat(document.getElementById('tpPts').value) || 2000;
+      state.activeTrade = setup;
+      state.isLocked = true;
+      saveState();
+      renderAll();
 
-      // 1H directional scan logic
-      const side = Math.random() >= 0.5 ? 'BUY' : 'SELL';
-      const entry = side === 'BUY' ? askPrice : bidPrice;
-      const sl = side === 'BUY'
-        ? +(entry - slPts * POINT).toFixed(DIGITS)
-        : +(entry + slPts * POINT).toFixed(DIGITS);
-      const tp = side === 'BUY'
-        ? +(entry + tpPts * POINT).toFixed(DIGITS)
-        : +(entry - tpPts * POINT).toFixed(DIGITS);
-
-      activeTrade = { side, entry, sl, tp, slPts, tpPts };
-      isLocked = true;
-
-      // Update UI to display signal and lock state
-      const badge = document.getElementById('lockBadge');
-      badge.classList.add('locked');
-      document.getElementById('lockText').textContent = 'LOCKED · WAITING FOR TP OR SL';
-
-      document.getElementById('lockStateLabel').textContent = 'LOCKED (UNTIL TP / SL)';
-      document.getElementById('lockStateLabel').className = 'red';
-
-      document.getElementById('sigDir').textContent = `SNIPER ${side}`;
-      document.getElementById('sigDir').className = side === 'BUY' ? 'green' : 'red';
-      document.getElementById('sigEntry').textContent = entry.toFixed(DIGITS);
-      document.getElementById('sigSL').textContent = `${sl.toFixed(DIGITS)} (-${slPts} pts)`;
-      document.getElementById('sigTP').textContent = `${tp.toFixed(DIGITS)} (+${tpPts} pts)`;
-
-      document.getElementById('scanOnceBtn').disabled = true;
-      document.getElementById('tpBtn').disabled = false;
-      document.getElementById('slBtn').disabled = false;
-
-      log(`SCANNED 1H → SIGNAL: ${side} | Entry: ${entry.toFixed(DIGITS)} | SL: ${sl.toFixed(DIGITS)} | TP: ${tp.toFixed(DIGITS)} — BOT LOCKED.`);
+      addLog(`1H SCAN LOCKED → ${setup.side} @ ${setup.entry.toFixed(DIGITS)} (H1 Open ${setup.h1Open.toFixed(DIGITS)}) | SL: ${setup.sl.toFixed(DIGITS)} | TP: ${setup.tp.toFixed(DIGITS)}`);
     }
 
     function unlockOnExit(reason) {
-      if (!isLocked || !activeTrade) return;
+      if (!state.isLocked || !state.activeTrade) return;
 
-      const sp = parseFloat(document.getElementById('spreadPts').value) || 55;
-      const exitPrice = reason === 'TP HIT' ? activeTrade.tp : activeTrade.sl;
+      const t = state.activeTrade;
+      const exitPrice = reason === 'TP HIT' ? t.tp : t.sl;
 
-      bidPrice = exitPrice;
-      askPrice = +(bidPrice + sp * POINT).toFixed(DIGITS);
-      document.getElementById('bidInput').value = bidPrice.toFixed(DIGITS);
-      document.getElementById('bidDisplay').textContent = bidPrice.toFixed(DIGITS);
-      document.getElementById('askDisplay').textContent = askPrice.toFixed(DIGITS);
+      state.bidPrice = exitPrice;
+      state.h1Open = exitPrice;
+      state.isLocked = false;
+      state.activeTrade = null;
 
-      const closedSummary = `${activeTrade.side} @ ${activeTrade.entry.toFixed(DIGITS)}`;
-
-      isLocked = false;
-      activeTrade = null;
-
-      const badge = document.getElementById('lockBadge');
-      badge.classList.remove('locked');
-      document.getElementById('lockText').textContent = 'UNLOCKED · READY TO SCAN';
-
-      document.getElementById('lockStateLabel').textContent = 'UNLOCKED';
-      document.getElementById('lockStateLabel').className = 'green';
-      document.getElementById('sigDir').textContent = 'WAITING FOR SCAN';
-      document.getElementById('sigDir').className = 'gold';
-      document.getElementById('sigEntry').textContent = '—';
-      document.getElementById('sigSL').textContent = '—';
-      document.getElementById('sigTP').textContent = '—';
-
-      document.getElementById('scanOnceBtn').disabled = false;
-      document.getElementById('tpBtn').disabled = true;
-      document.getElementById('slBtn').disabled = true;
-
-      log(`${reason} @ ${exitPrice.toFixed(DIGITS)} (${closedSummary}) → ROBOT UNLOCKED.`);
+      saveState();
+      renderAll();
+      addLog(`${reason} @ ${exitPrice.toFixed(DIGITS)} (${t.side} Entry ${t.entry.toFixed(DIGITS)}) → BOT UNLOCKED.`);
     }
 
     function toggleLiveTicks() {
@@ -414,30 +512,33 @@
         clearInterval(tickInterval);
         tickInterval = null;
         btn.textContent = 'Auto Tick Check: OFF';
-        log('Live tick check stopped.');
+        addLog('Auto tick check paused.');
         return;
       }
 
       btn.textContent = 'Auto Tick Check: ON';
-      log('Live tick check active: monitoring US500 price against SL and 2,000-pt TP.');
+      addLog('Auto tick check started: watching price against locked SL and 2,000-pt TP.');
 
       tickInterval = setInterval(() => {
-        const sp = parseFloat(document.getElementById('spreadPts').value) || 55;
-        const move = (Math.random() - 0.5) * 3.50; // +/- 350 points per tick
-        bidPrice = +(Math.max(100, bidPrice + move)).toFixed(DIGITS);
-        askPrice = +(bidPrice + sp * POINT).toFixed(DIGITS);
+        // Smooth deterministic wave drift so price moves cleanly toward levels without random jumps
+        const tSec = Math.floor(Date.now() / 1000);
+        const step = Math.sin(tSec / 4) * 1.25;
+        state.bidPrice = +(Math.max(100, state.bidPrice + step)).toFixed(DIGITS);
+        saveState();
 
-        document.getElementById('bidInput').value = bidPrice.toFixed(DIGITS);
-        document.getElementById('bidDisplay').textContent = bidPrice.toFixed(DIGITS);
-        document.getElementById('askDisplay').textContent = askPrice.toFixed(DIGITS);
+        const ask = getAskPrice();
+        document.getElementById('bidInput').value = state.bidPrice.toFixed(DIGITS);
+        document.getElementById('bidDisplay').textContent = state.bidPrice.toFixed(DIGITS);
+        document.getElementById('askDisplay').textContent = ask.toFixed(DIGITS);
 
-        if (isLocked && activeTrade) {
-          if (activeTrade.side === 'BUY') {
-            if (bidPrice >= activeTrade.tp) unlockOnExit('TP HIT');
-            else if (bidPrice <= activeTrade.sl) unlockOnExit('SL HIT');
+        if (state.isLocked && state.activeTrade) {
+          const trade = state.activeTrade;
+          if (trade.side === 'BUY') {
+            if (state.bidPrice >= trade.tp) unlockOnExit('TP HIT');
+            else if (state.bidPrice <= trade.sl) unlockOnExit('SL HIT');
           } else {
-            if (askPrice <= activeTrade.tp) unlockOnExit('TP HIT');
-            else if (askPrice >= activeTrade.sl) unlockOnExit('SL HIT');
+            if (ask <= trade.tp) unlockOnExit('TP HIT');
+            else if (ask >= trade.sl) unlockOnExit('SL HIT');
           }
         }
       }, 1000);
@@ -453,9 +554,17 @@
         `US500 H1 · 2-Digit Quote (0.01) · Local Time: ${now.toTimeString().slice(0, 8)}`;
     }
 
+    // Boot: restore saved lock & signal state immediately on page load/refresh
+    loadState();
+    renderAll();
     updateH1Countdown();
     setInterval(updateH1Countdown, 1000);
-    log('US500 2-digit quote loaded (7083.06 / 7083.61). Click "Scan 1H Market Once & Lock".');
+
+    if (state.logs.length === 0) {
+      addLog('Bot initialized at 7083.06 / 7083.61. State persists across browser refreshes.');
+    } else if (state.isLocked && state.activeTrade) {
+      addLog(`Session restored after refresh: LOCKED on ${state.activeTrade.side} @ ${state.activeTrade.entry.toFixed(DIGITS)}.`);
+    }
   </script>
 </body>
 </html>
