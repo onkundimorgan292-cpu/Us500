@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>US500 1H Sniper Bot · Persistent Lock</title>
+  <title>US500 1H Sniper Bot · 20,000-Pt Target</title>
   <style>
     :root {
       --bg: #080a0d;
@@ -224,8 +224,8 @@
   <div class="container">
     <header>
       <div class="brand">
-        <h1>US500 · H1 SNIPER SCANNER & PERSISTENT LOCK BOT</h1>
-        <p>Survives Page Refresh · Deterministic Non-Shifting Entry · 2,000-Pt TP Lock</p>
+        <h1>US500 · H1 SNIPER BOT (20,000-PT TARGET)</h1>
+        <p>Survives Refresh · Non-Shifting Sniper Entry · Locked Until 20,000-Pt TP or SL Hits</p>
       </div>
       <div id="lockBadge" class="status-pill">
         <span class="dot"></span>
@@ -263,14 +263,14 @@
           <span id="sigSL" class="red">—</span>
         </div>
         <div class="row">
-          <span>Take Profit (+2,000 pts)</span>
+          <span>Take Profit (+20,000 pts)</span>
           <span id="sigTP" class="green">—</span>
         </div>
       </div>
     </div>
 
     <div class="card" style="margin-bottom: 18px;">
-      <div class="card-title">US500 Parameters (1 pt = 0.01 | 2,000 pts = 20.00)</div>
+      <div class="card-title">US500 Parameters (1 pt = 0.01 | 20,000 pts = +200.00)</div>
       <div class="controls">
         <div>
           <label for="bidInput">US500 Current Bid (2 Digits)</label>
@@ -286,17 +286,17 @@
         </div>
         <div>
           <label for="slPts">Sniper SL (Points)</label>
-          <input id="slPts" type="number" step="10" value="850" oninput="onParamChange()" />
+          <input id="slPts" type="number" step="50" value="1500" oninput="onParamChange()" />
         </div>
         <div>
           <label for="tpPts">Target TP (Points)</label>
-          <input id="tpPts" type="number" step="10" value="2000" oninput="onParamChange()" />
+          <input id="tpPts" type="number" step="100" value="20000" oninput="onParamChange()" />
         </div>
       </div>
 
       <div class="btn-row">
-        <button id="scanOnceBtn" class="btn-scan" onclick="scanOnceAndLock()">Scan 1H Market Once & Lock</button>
-        <button id="tpBtn" class="btn-tp" onclick="unlockOnExit('TP HIT')" disabled>TP Hit (+2,000 pts) → Unlock</button>
+        <button id="scanOnceBtn" class="btn-scan" onclick="scanOnceAndLock()">Scan 1H Sniper & Lock (20,000 pts)</button>
+        <button id="tpBtn" class="btn-tp" onclick="unlockOnExit('TP HIT')" disabled>TP Hit (+20,000 pts) → Unlock</button>
         <button id="slBtn" class="btn-sl" onclick="unlockOnExit('SL HIT')" disabled>SL Hit → Unlock</button>
         <button id="simBtn" class="btn-sim" onclick="toggleLiveTicks()">Auto Tick Check: OFF</button>
       </div>
@@ -309,7 +309,7 @@
   </div>
 
   <script>
-    const STORAGE_KEY = 'US500_H1_SNIPER_BOT_STATE_V1';
+    const STORAGE_KEY = 'US500_H1_SNIPER_20000PT_STATE_V1';
     const POINT = 0.01;
     const DIGITS = 2;
 
@@ -319,8 +319,8 @@
       bidPrice: 7083.06,
       h1Open: 7095.40,
       spreadPts: 55,
-      slPts: 850,
-      tpPts: 2000,
+      slPts: 1500,
+      tpPts: 20000,
       logs: []
     };
 
@@ -362,17 +362,14 @@
       return +(state.bidPrice + state.spreadPts * POINT).toFixed(DIGITS);
     }
 
-    // Deterministic, non-shifting 1H sniper rule based on H1 Open vs Current Bid + round institutional quarter-levels
     function computeDeterministicSetup() {
       const bid = state.bidPrice;
       const ask = getAskPrice();
       const h1Open = state.h1Open;
 
-      // Bearish 1H structure if Bid is below H1 Open; Bullish 1H structure if Bid is above/equal to H1 Open
       const isBullish = bid >= h1Open;
       const side = isBullish ? 'BUY' : 'SELL';
 
-      // Snap sniper entry cleanly to exact 0.25 index quarter-level (no random shifting)
       const rawEntry = side === 'BUY' ? ask : bid;
       const snappedEntry = +(Math.round(rawEntry * 4) / 4).toFixed(DIGITS);
 
@@ -410,7 +407,6 @@
       const badge = document.getElementById('lockBadge');
       const lockText = document.getElementById('lockText');
 
-      // Lock input fields while a trade is active so levels cannot shift mid-trade
       document.getElementById('h1OpenInput').disabled = state.isLocked;
       document.getElementById('spreadPts').disabled = state.isLocked;
       document.getElementById('slPts').disabled = state.isLocked;
@@ -487,7 +483,7 @@
       saveState();
       renderAll();
 
-      addLog(`1H SCAN LOCKED → ${setup.side} @ ${setup.entry.toFixed(DIGITS)} (H1 Open ${setup.h1Open.toFixed(DIGITS)}) | SL: ${setup.sl.toFixed(DIGITS)} | TP: ${setup.tp.toFixed(DIGITS)}`);
+      addLog(`1H SNIPER LOCKED → ${setup.side} @ ${setup.entry.toFixed(DIGITS)} | SL: ${setup.sl.toFixed(DIGITS)} | TP: ${setup.tp.toFixed(DIGITS)} (+${setup.tpPts} pts)`);
     }
 
     function unlockOnExit(reason) {
@@ -517,12 +513,11 @@
       }
 
       btn.textContent = 'Auto Tick Check: ON';
-      addLog('Auto tick check started: watching price against locked SL and 2,000-pt TP.');
+      addLog('Auto tick check started: watching price against locked SL and 20,000-pt TP.');
 
       tickInterval = setInterval(() => {
-        // Smooth deterministic wave drift so price moves cleanly toward levels without random jumps
         const tSec = Math.floor(Date.now() / 1000);
-        const step = Math.sin(tSec / 4) * 1.25;
+        const step = Math.sin(tSec / 4) * 2.50;
         state.bidPrice = +(Math.max(100, state.bidPrice + step)).toFixed(DIGITS);
         saveState();
 
@@ -554,14 +549,13 @@
         `US500 H1 · 2-Digit Quote (0.01) · Local Time: ${now.toTimeString().slice(0, 8)}`;
     }
 
-    // Boot: restore saved lock & signal state immediately on page load/refresh
     loadState();
     renderAll();
     updateH1Countdown();
     setInterval(updateH1Countdown, 1000);
 
     if (state.logs.length === 0) {
-      addLog('Bot initialized at 7083.06 / 7083.61. State persists across browser refreshes.');
+      addLog('Bot initialized at 7083.06 / 7083.61 with 20,000-point (+200.00) TP target.');
     } else if (state.isLocked && state.activeTrade) {
       addLog(`Session restored after refresh: LOCKED on ${state.activeTrade.side} @ ${state.activeTrade.entry.toFixed(DIGITS)}.`);
     }
