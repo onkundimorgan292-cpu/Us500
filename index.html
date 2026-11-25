@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>1H Market Scanner & Sniper Lock Bot</title>
+  <style>
+    :root {
+      --bg: #0b0d10;
+      --card: #14181f;
+      --border: #262c38;
+      --gold: #d4af37;
+      --gold-soft: rgba(212, 175, 55, 0.14);
+      --green: #16c784;
+      --red: #ea3943;
+      --blue: #3b82f6;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 22px;
+    }
+
+    .brand h1 {
+      font-size: 1.45rem;
+      color: var(--gold);
+      letter-spacing: 0.4px;
+    }
+
+    .brand p {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-top: 4px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 16px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.84rem;
+      letter-spacing: 0.5px;
+      border: 1px solid var(--gold);
+      background: var(--gold-soft);
+      color: var(--gold);
+    }
+
+    .status-pill.locked {
+      border-color: var(--blue);
+      background: rgba(59, 130, 246, 0.16);
+      color: #60a5fa;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .card-title {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .big-num {
+      font-family: 'Consolas', monospace;
+      font-size: 2.1rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+
+    .subtext {
+      font-size: 0.84rem;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.92rem;
+    }
+
+    .row:last-child {
+      border-bottom: none;
+    }
+
+    .gold { color: var(--gold); font-weight: 700; }
+    .green { color: var(--green); font-weight: 700; }
+    .red { color: var(--red); font-weight: 700; }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0e1116;
+      color: var(--text);
+      font-size: 0.92rem;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    button {
+      padding: 11px 16px;
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 0.88rem;
+    }
+
+    button:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    .btn-scan { background: var(--gold); color: #111; }
+    .btn-enter { background: var(--green); color: #06150e; }
+    .btn-tp { background: #10b981; color: #05130d; }
+    .btn-sl { background: var(--red); color: #fff; }
+    .btn-sim { background: #2563eb; color: #fff; }
+
+    .log-box {
+      background: #090b0e;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      font-family: 'Consolas', monospace;
+      font-size: 0.82rem;
+      color: #d1d5db;
+      max-height: 200px;
+      overflow-y: auto;
+      line-height: 1.55;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <h1>1H SNIPER SCANNER & TRADE LOCK BOT</h1>
+        <p>Scans 1H Market · Outputs Entry, SL & 2,000-Pt TP · Locks Until TP or SL Hits</p>
+      </div>
+      <div id="lockBadge" class="status-pill">
+        <span class="dot"></span>
+        <span id="lockText">UNLOCKED · READY TO SCAN 1H</span>
+      </div>
+    </header>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-title">1H Candle Countdown & Live Price</div>
+        <div id="countdown" class="big-num">00:00:00</div>
+        <div id="livePriceText" class="subtext">Live Price: 5850.00 | Next 1H Scan at :00</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Latest 1H Scan Setup</div>
+        <div class="row">
+          <span>Signal Direction</span>
+          <span id="scanDir" class="gold">PENDING SCAN</span>
+        </div>
+        <div class="row">
+          <span>Sniper Entry</span>
+          <span id="scanEntry">—</span>
+        </div>
+        <div class="row">
+          <span>Sniper Stop Loss</span>
+          <span id="scanSL" class="red">—</span>
+        </div>
+        <div class="row">
+          <span>Take Profit (2,000 pts)</span>
+          <span id="scanTP" class="green">—</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Active Locked Position</div>
+        <div class="row">
+          <span>Lock Status</span>
+          <span id="activeLockState" class="gold">UNLOCKED</span>
+        </div>
+        <div class="row">
+          <span>Active Side & Entry</span>
+          <span id="activeEntry">—</span>
+        </div>
+        <div class="row">
+          <span>Active SL</span>
+          <span id="activeSL" class="red">—</span>
+        </div>
+        <div class="row">
+          <span>Active TP (+2,000 pts)</span>
+          <span id="activeTP" class="green">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 20px;">
+      <div class="card-title">Scanner Parameters & Lock Controls</div>
+      <div class="controls">
+        <div>
+          <label for="basePrice">Current Market Price</label>
+          <input id="basePrice" type="number" step="0.01" value="5850.00" />
+        </div>
+        <div>
+          <label for="slPts">Sniper SL (Points)</label>
+          <input id="slPts" type="number" step="10" value="850" />
+        </div>
+        <div>
+          <label for="tpPts">Target TP (Points)</label>
+          <input id="tpPts" type="number" step="10" value="2000" />
+        </div>
+        <div>
+          <label for="pointStep">Point Value</label>
+          <select id="pointStep">
+            <option value="0.01" selected>0.01 (2 Decimals)</option>
+            <option value="0.1">0.10 (1 Decimal)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button id="scanBtn" class="btn-scan" onclick="scanOneHourMarket()">Scan 1H Market Now</button>
+        <button id="enterBtn" class="btn-enter" onclick="enterLockedTrade()" disabled>Enter & Lock Trade</button>
+        <button id="tpHitBtn" class="btn-tp" onclick="triggerExit('TP HIT')" disabled>TP Hit → Unlock</button>
+        <button id="slHitBtn" class="btn-sl" onclick="triggerExit('SL HIT')" disabled>SL Hit → Unlock</button>
+        <button id="autoTickBtn" class="btn-sim" onclick="toggleTickEngine()">Start Live Tick Check: OFF</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">1H Scanner & Lock Event Log</div>
+      <div id="logBox" class="log-box"></div>
+    </div>
+  </div>
+
+  <script>
+    let isLocked = false;
+    let currentSignal = null;
+    let activeTrade = null;
+    let livePrice = 5850.00;
+    let tickTimer = null;
+    let lastAutoScannedHour = -1;
+
+    function log(msg) {
+      const box = document.getElementById('logBox');
+      const time = new Date().toTimeString().slice(0, 8);
+      box.innerHTML = `[${time}] ${msg}<br>` + box.innerHTML;
+    }
+
+    function getPoint() {
+      return parseFloat(document.getElementById('pointStep').value);
+    }
+
+    function getDecimals() {
+      return getPoint() === 0.01 ? 2 : 1;
+    }
+
+    function scanOneHourMarket() {
+      if (isLocked) {
+        log('SCAN SKIPPED: Bot is LOCKED while active trade awaits TP or SL.');
+        return;
+      }
+
+      const dec = getDecimals();
+      const pt = getPoint();
+      livePrice = parseFloat(document.getElementById('basePrice').value) || livePrice;
+
+      // Simulated 1H momentum + pullback score
+      const emaFast = livePrice + (Math.random() - 0.48) * 18;
+      const emaSlow = livePrice + (Math.random() - 0.5) * 30;
+      const side = emaFast >= emaSlow ? 'BUY' : 'SELL';
+
+      const slPts = parseFloat(document.getElementById('slPts').value) || 850;
+      const tpPts = parseFloat(document.getElementById('tpPts').value) || 2000;
+
+      const entry = livePrice;
+      const sl = side === 'BUY' ? entry - slPts * pt : entry + slPts * pt;
+      const tp = side === 'BUY' ? entry + tpPts * pt : entry - tpPts * pt;
+
+      currentSignal = { side, entry, sl, tp, slPts, tpPts };
+
+      document.getElementById('scanDir').textContent = `SNIPER ${side}`;
+      document.getElementById('scanDir').className = side === 'BUY' ? 'green' : 'red';
+      document.getElementById('scanEntry').textContent = entry.toFixed(dec);
+      document.getElementById('scanSL').textContent = sl.toFixed(dec);
+      document.getElementById('scanTP').textContent = tp.toFixed(dec);
+      document.getElementById('enterBtn').disabled = false;
+
+      log(`1H SCAN COMPLETE → ${side} Entry: ${entry.toFixed(dec)} | SL: ${sl.toFixed(dec)} (${slPts} pts) | TP: ${tp.toFixed(dec)} (${tpPts} pts).`);
+    }
+
+    function enterLockedTrade() {
+      if (isLocked || !currentSignal) return;
+
+      const dec = getDecimals();
+      isLocked = true;
+      activeTrade = { ...currentSignal };
+      currentSignal = null;
+
+      document.getElementById('enterBtn').disabled = true;
+      document.getElementById('scanBtn').disabled = true;
+      document.getElementById('tpHitBtn').disabled = false;
+      document.getElementById('slHitBtn').disabled = false;
+
+      document.getElementById('activeLockState').textContent = 'LOCKED (UNTIL TP / SL)';
+      document.getElementById('activeLockState').className = 'red';
+      document.getElementById('activeEntry').textContent = `${activeTrade.side} @ ${activeTrade.entry.toFixed(dec)}`;
+      document.getElementById('activeSL').textContent = activeTrade.sl.toFixed(dec);
+      document.getElementById('activeTP').textContent = activeTrade.tp.toFixed(dec);
+
+      updateLockBadge();
+      log(`TRADE ENTERED & BOT LOCKED → ${activeTrade.side} @ ${activeTrade.entry.toFixed(dec)}. Locked until TP (${activeTrade.tp.toFixed(dec)}) or SL (${activeTrade.sl.toFixed(dec)}) hits.`);
+    }
+
+    function triggerExit(reason) {
+      if (!isLocked || !activeTrade) return;
+
+      const dec = getDecimals();
+      const closedSide = activeTrade.side;
+      const closedEntry = activeTrade.entry.toFixed(dec);
+
+      if (reason === 'TP HIT') {
+        livePrice = activeTrade.tp;
+      } else if (reason === 'SL HIT') {
+        livePrice = activeTrade.sl;
+      }
+      document.getElementById('basePrice').value = livePrice.toFixed(dec);
+
+      isLocked = false;
+      activeTrade = null;
+
+      document.getElementById('scanBtn').disabled = false;
+      document.getElementById('tpHitBtn').disabled = true;
+      document.getElementById('slHitBtn').disabled = true;
+
+      document.getElementById('activeLockState').textContent = 'UNLOCKED';
+      document.getElementById('activeLockState').className = 'green';
+      document.getElementById('activeEntry').textContent = '—';
+      document.getElementById('activeSL').textContent = '—';
+      document.getElementById('activeTP').textContent = '—';
+
+      updateLockBadge();
+      log(`${reason} on ${closedSide} (Entry ${closedEntry}) → BOT UNLOCKED. Ready for next 1H scan.`);
+    }
+
+    function updateLockBadge() {
+      const badge = document.getElementById('lockBadge');
+      const text = document.getElementById('lockText');
+      if (isLocked) {
+        badge.classList.add('locked');
+        text.textContent = 'LOCKED · WAITING FOR TP OR SL';
+      } else {
+        badge.classList.remove('locked');
+        text.textContent = 'UNLOCKED · READY TO SCAN 1H';
+      }
+    }
+
+    function toggleTickEngine() {
+      const btn = document.getElementById('autoTickBtn');
+      if (tickTimer) {
+        clearInterval(tickTimer);
+        tickTimer = null;
+        btn.textContent = 'Start Live Tick Check: OFF';
+        log('Simulated tick engine stopped.');
+        return;
+      }
+
+      btn.textContent = 'Start Live Tick Check: ON';
+      log('Simulated tick engine started. Price ticks will automatically check SL & TP.');
+
+      tickTimer = setInterval(() => {
+        const dec = getDecimals();
+        const pt = getPoint();
+        const drift = (Math.random() - 0.495) * (250 * pt);
+        livePrice = Math.max(1, livePrice + drift);
+        document.getElementById('basePrice').value = livePrice.toFixed(dec);
+
+        if (isLocked && activeTrade) {
+          if (activeTrade.side === 'BUY') {
+            if (livePrice >= activeTrade.tp) triggerExit('TP HIT');
+            else if (livePrice <= activeTrade.sl) triggerExit('SL HIT');
+          } else {
+            if (livePrice <= activeTrade.tp) triggerExit('TP HIT');
+            else if (livePrice >= activeTrade.sl) triggerExit('SL HIT');
+          }
+        }
+      }, 1000);
+    }
+
+    function updateClockAnd1HScan() {
+      const now = new Date();
+      const minsLeft = 59 - now.getMinutes();
+      const secsLeft = 59 - now.getSeconds();
+      const dec = getDecimals();
+
+      document.getElementById('countdown').textContent =
+        `00:${String(minsLeft).padStart(2, '0')}:${String(secsLeft).padStart(2, '0')}`;
+      document.getElementById('livePriceText').textContent =
+        `Live Price: ${livePrice.toFixed(dec)} | Local Time: ${now.toTimeString().slice(0, 8)}`;
+
+      // Auto-scan at the start of every new clock hour when unlocked
+      const currentHourKey = `${now.toDateString()}-${now.getHours()}`;
+      if (now.getMinutes() === 0 && now.getSeconds() < 2 && lastAutoScannedHour !== currentHourKey) {
+        lastAutoScannedHour = currentHourKey;
+        scanOneHourMarket();
+      }
+    }
+
+    updateClockAnd1HScan();
+    setInterval(updateClockAnd1HScan, 1000);
+    log('1H Sniper Scanner ready. Click "Scan 1H Market Now" to generate Entry, SL, and 2,000-pt TP.');
+  </script>
+</body>
+</html>
