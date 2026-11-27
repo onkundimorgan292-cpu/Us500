@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>US500 1H Sniper Bot · 20,000-Pt Target</title>
+  <title>US500 1H Sniper Bot · Auto Next Entry on TP</title>
   <style>
     :root {
       --bg: #080a0d;
@@ -214,7 +214,7 @@
       font-family: 'Consolas', monospace;
       font-size: 0.81rem;
       color: #d1d5db;
-      max-height: 190px;
+      max-height: 200px;
       overflow-y: auto;
       line-height: 1.55;
     }
@@ -224,8 +224,8 @@
   <div class="container">
     <header>
       <div class="brand">
-        <h1>US500 · H1 SNIPER BOT (20,000-PT TARGET)</h1>
-        <p>Survives Refresh · Non-Shifting Sniper Entry · Locked Until 20,000-Pt TP or SL Hits</p>
+        <h1>US500 · 1H SNIPER BOT (AUTO NEXT ENTRY ON TP)</h1>
+        <p>Scans Once & Locks · Hits TP/SL → Unlocks & Immediately Gives Next Sniper Entry</p>
       </div>
       <div id="lockBadge" class="status-pill">
         <span class="dot"></span>
@@ -245,7 +245,7 @@
       </div>
 
       <div class="card">
-        <div class="card-title">Locked 1H Sniper Signal (Refresh-Safe)</div>
+        <div class="card-title">Active 1H Sniper Signal (Cycle #<span id="cycleNum">0</span>)</div>
         <div class="row">
           <span>Lock Status</span>
           <span id="lockStateLabel" class="gold">UNLOCKED</span>
@@ -277,7 +277,7 @@
           <input id="bidInput" type="number" step="0.01" value="7083.06" oninput="onParamChange()" />
         </div>
         <div>
-          <label for="h1OpenInput">Current H1 Candle Open</label>
+          <label for="h1OpenInput">Reference 1H Open / Pivot</label>
           <input id="h1OpenInput" type="number" step="0.01" value="7095.40" oninput="onParamChange()" />
         </div>
         <div>
@@ -295,26 +295,27 @@
       </div>
 
       <div class="btn-row">
-        <button id="scanOnceBtn" class="btn-scan" onclick="scanOnceAndLock()">Scan 1H Sniper & Lock (20,000 pts)</button>
-        <button id="tpBtn" class="btn-tp" onclick="unlockOnExit('TP HIT')" disabled>TP Hit (+20,000 pts) → Unlock</button>
-        <button id="slBtn" class="btn-sl" onclick="unlockOnExit('SL HIT')" disabled>SL Hit → Unlock</button>
+        <button id="scanOnceBtn" class="btn-scan" onclick="scanOnceAndLock()">Scan 1H Sniper & Lock</button>
+        <button id="tpBtn" class="btn-tp" onclick="handleExitAndNext('TP HIT')" disabled>TP Hit → Unlock & Next Sniper Entry</button>
+        <button id="slBtn" class="btn-sl" onclick="handleExitAndNext('SL HIT')" disabled>SL Hit → Unlock & Next Sniper Entry</button>
         <button id="simBtn" class="btn-sim" onclick="toggleLiveTicks()">Auto Tick Check: OFF</button>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-title">Persistent Execution Log</div>
+      <div class="card-title">Persistent Execution & Next-Entry Log</div>
       <div id="logBox" class="log-box"></div>
     </div>
   </div>
 
   <script>
-    const STORAGE_KEY = 'US500_H1_SNIPER_20000PT_STATE_V1';
+    const STORAGE_KEY = 'US500_H1_SNIPER_AUTO_NEXT_V1';
     const POINT = 0.01;
     const DIGITS = 2;
 
     let state = {
       isLocked: false,
+      cycleCount: 0,
       activeTrade: null,
       bidPrice: 7083.06,
       h1Open: 7095.40,
@@ -349,7 +350,7 @@
     function addLog(msg) {
       const now = new Date().toTimeString().slice(0, 8);
       state.logs.unshift(`[${now}] ${msg}`);
-      if (state.logs.length > 40) state.logs.length = 40;
+      if (state.logs.length > 50) state.logs.length = 50;
       saveState();
       renderLogs();
     }
@@ -365,9 +366,9 @@
     function computeDeterministicSetup() {
       const bid = state.bidPrice;
       const ask = getAskPrice();
-      const h1Open = state.h1Open;
+      const pivot = state.h1Open;
 
-      const isBullish = bid >= h1Open;
+      const isBullish = bid >= pivot;
       const side = isBullish ? 'BUY' : 'SELL';
 
       const rawEntry = side === 'BUY' ? ask : bid;
@@ -388,13 +389,14 @@
         tp,
         slPts: state.slPts,
         tpPts: state.tpPts,
-        h1Open
+        pivot
       };
     }
 
     function renderAll() {
       const ask = getAskPrice();
 
+      document.getElementById('cycleNum').textContent = state.cycleCount;
       document.getElementById('bidInput').value = state.bidPrice.toFixed(DIGITS);
       document.getElementById('h1OpenInput').value = state.h1Open.toFixed(DIGITS);
       document.getElementById('spreadPts').value = state.spreadPts;
@@ -415,7 +417,7 @@
       if (state.isLocked && state.activeTrade) {
         const t = state.activeTrade;
         badge.classList.add('locked');
-        lockText.textContent = 'LOCKED · SAVED ACROSS REFRESH';
+        lockText.textContent = `LOCKED · CYCLE #${state.cycleCount}`;
 
         document.getElementById('lockStateLabel').textContent = 'LOCKED (UNTIL TP / SL)';
         document.getElementById('lockStateLabel').className = 'red';
@@ -469,37 +471,44 @@
       document.getElementById('askDisplay').textContent = getAskPrice().toFixed(DIGITS);
     }
 
-    function scanOnceAndLock() {
-      if (state.isLocked) {
-        addLog('BLOCKED: Already locked on active signal until TP or SL hits.');
-        return;
-      }
-
-      onParamChange();
+    function lockNewSetup(prefixNote = '') {
       const setup = computeDeterministicSetup();
-
+      state.cycleCount += 1;
       state.activeTrade = setup;
       state.isLocked = true;
       saveState();
       renderAll();
 
-      addLog(`1H SNIPER LOCKED → ${setup.side} @ ${setup.entry.toFixed(DIGITS)} | SL: ${setup.sl.toFixed(DIGITS)} | TP: ${setup.tp.toFixed(DIGITS)} (+${setup.tpPts} pts)`);
+      addLog(
+        `${prefixNote}CYCLE #${state.cycleCount} LOCKED → ${setup.side} @ ${setup.entry.toFixed(DIGITS)} | SL: ${setup.sl.toFixed(DIGITS)} | TP: ${setup.tp.toFixed(DIGITS)} (+${setup.tpPts} pts)`
+      );
     }
 
-    function unlockOnExit(reason) {
+    function scanOnceAndLock() {
+      if (state.isLocked) {
+        addLog('BLOCKED: Already locked until current TP or SL hits.');
+        return;
+      }
+      onParamChange();
+      lockNewSetup('1H SCAN → ');
+    }
+
+    // Unlocks on TP or SL hit, updates market level, and immediately gives the next sniper entry & locks
+    function handleExitAndNext(reason) {
       if (!state.isLocked || !state.activeTrade) return;
 
       const t = state.activeTrade;
       const exitPrice = reason === 'TP HIT' ? t.tp : t.sl;
 
-      state.bidPrice = exitPrice;
-      state.h1Open = exitPrice;
+      // Move price to exit level and offset the next pivot slightly (2.50 index pts = 250 pts)
+      // so the next scan reads the fresh post-exit structure cleanly
+      state.bidPrice = +exitPrice.toFixed(DIGITS);
+      state.h1Open = +(exitPrice + (reason === 'TP HIT' ? -2.50 : 2.50)).toFixed(DIGITS);
       state.isLocked = false;
       state.activeTrade = null;
 
-      saveState();
-      renderAll();
-      addLog(`${reason} @ ${exitPrice.toFixed(DIGITS)} (${t.side} Entry ${t.entry.toFixed(DIGITS)}) → BOT UNLOCKED.`);
+      addLog(`${reason} @ ${exitPrice.toFixed(DIGITS)} on ${t.side} (Entry ${t.entry.toFixed(DIGITS)}) → UNLOCKED & SCANNING NEXT SNIPER ENTRY...`);
+      lockNewSetup('AUTO NEXT ENTRY → ');
     }
 
     function toggleLiveTicks() {
@@ -513,11 +522,11 @@
       }
 
       btn.textContent = 'Auto Tick Check: ON';
-      addLog('Auto tick check started: watching price against locked SL and 20,000-pt TP.');
+      addLog('Auto tick check started: watches SL and 20,000-pt TP, then auto-scans next sniper entry.');
 
       tickInterval = setInterval(() => {
         const tSec = Math.floor(Date.now() / 1000);
-        const step = Math.sin(tSec / 4) * 2.50;
+        const step = Math.sin(tSec / 4) * 3.00;
         state.bidPrice = +(Math.max(100, state.bidPrice + step)).toFixed(DIGITS);
         saveState();
 
@@ -529,11 +538,11 @@
         if (state.isLocked && state.activeTrade) {
           const trade = state.activeTrade;
           if (trade.side === 'BUY') {
-            if (state.bidPrice >= trade.tp) unlockOnExit('TP HIT');
-            else if (state.bidPrice <= trade.sl) unlockOnExit('SL HIT');
+            if (state.bidPrice >= trade.tp) handleExitAndNext('TP HIT');
+            else if (state.bidPrice <= trade.sl) handleExitAndNext('SL HIT');
           } else {
-            if (ask <= trade.tp) unlockOnExit('TP HIT');
-            else if (ask >= trade.sl) unlockOnExit('SL HIT');
+            if (ask <= trade.tp) handleExitAndNext('TP HIT');
+            else if (ask >= trade.sl) handleExitAndNext('SL HIT');
           }
         }
       }, 1000);
@@ -555,9 +564,9 @@
     setInterval(updateH1Countdown, 1000);
 
     if (state.logs.length === 0) {
-      addLog('Bot initialized at 7083.06 / 7083.61 with 20,000-point (+200.00) TP target.');
+      addLog('Initialized at 7083.06 / 7083.61. On TP or SL hit, bot unlocks and immediately generates the next sniper entry.');
     } else if (state.isLocked && state.activeTrade) {
-      addLog(`Session restored after refresh: LOCKED on ${state.activeTrade.side} @ ${state.activeTrade.entry.toFixed(DIGITS)}.`);
+      addLog(`Restored Cycle #${state.cycleCount}: LOCKED on ${state.activeTrade.side} @ ${state.activeTrade.entry.toFixed(DIGITS)}.`);
     }
   </script>
 </body>
